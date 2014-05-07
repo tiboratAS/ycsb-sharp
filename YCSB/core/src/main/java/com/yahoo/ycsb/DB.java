@@ -18,6 +18,7 @@
 package com.yahoo.ycsb;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.Vector;
@@ -134,4 +135,13 @@ public abstract class DB
 	 * @return Zero on success, a non-zero error code on error.  See this class's description for a discussion of error codes.
 	 */
 	public abstract int delete(String table, String key);
+
+	public int bulkload(String table, String[] params) {
+	    return 0;
+	}
+	
+    public int presplit(String table, String[] splitKeys) {
+        // TODO Auto-generated method stub
+        return 0;
+    }
 }

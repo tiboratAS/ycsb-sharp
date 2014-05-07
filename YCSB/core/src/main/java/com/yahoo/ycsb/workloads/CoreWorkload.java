@@ -18,6 +18,7 @@
 package com.yahoo.ycsb.workloads;
 
 import java.util.Properties;
+
 import com.yahoo.ycsb.*;
 import com.yahoo.ycsb.generator.CounterGenerator;
 import com.yahoo.ycsb.generator.DiscreteGenerator;
@@ -497,7 +498,12 @@ public class CoreWorkload extends Workload
 		
 		return true;
 	}
-
+	
+    @Override
+    public boolean doBulkload(DB db, Object threadstate) {
+        return true;
+    }
+	
     int nextKeynum() {
         int keynum;
         if(keychooser instanceof ExponentialGenerator) {
@@ -638,4 +644,5 @@ public class CoreWorkload extends Workload
 		HashMap<String, ByteIterator> values = buildValues();
 		db.insert(table,dbkey,values);
 	}
+
 }

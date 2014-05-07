@@ -21,6 +21,11 @@ COMMANDS = {
         "description" : "Execute the transaction phase",
         "main"        : "com.yahoo.ycsb.Client",
     },
+    "bulkload" : {
+        "command"     : "-bulk",
+        "description" : "Execute the bulkloading phase",
+        "main"        : "com.yahoo.ycsb.Client",
+    },
 }
 
 DATABASES = {

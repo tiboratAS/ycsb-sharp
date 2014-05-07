@@ -147,6 +147,7 @@ class ClientThread extends Thread
 {
 	DB _db;
 	boolean _dotransactions;
+	boolean _dobulkload;
 	Workload _workload;
 	int _opcount;
 	double _target;
@@ -170,11 +171,12 @@ class ClientThread extends Thread
 	 * @param opcount the number of operations (transactions or inserts) to do
 	 * @param targetperthreadperms target number of operations per thread per ms
 	 */
-	public ClientThread(DB db, boolean dotransactions, Workload workload, int threadid, int threadcount, Properties props, int opcount, double targetperthreadperms)
+	public ClientThread(DB db, boolean dobulkload, boolean dotransactions, Workload workload, int threadid, int threadcount, Properties props, int opcount, double targetperthreadperms)
 	{
 		//TODO: consider removing threadcount and threadid
 		_db=db;
 		_dotransactions=dotransactions;
+		_dobulkload=dobulkload;
 		_workload=workload;
 		_opcount=opcount;
 		_opsdone=0;
@@ -231,7 +233,14 @@ class ClientThread extends Thread
 		
 		try
 		{
-			if (_dotransactions)
+		    if (_dobulkload) {
+		        long st=System.currentTimeMillis();
+		        
+		        _workload.doBulkload(_db, _workloadstate);
+
+		        System.out.println("Bulk Load Finished in: " + (System.currentTimeMillis() - st) + "ms");
+		    }
+		    else if (_dotransactions)
 			{
 				long st=System.currentTimeMillis();
 
@@ -443,6 +452,7 @@ public class Client
 		Properties props=new Properties();
 		Properties fileprops=new Properties();
 		boolean dotransactions=true;
+		boolean dobulkload = false;
 		int threadcount=1;
 		int target=0;
 		boolean status=false;
@@ -487,6 +497,11 @@ public class Client
 			{
 				dotransactions=false;
 				argindex++;
+			}
+			else if (args[argindex].compareTo("-bulk") == 0) {
+			    System.out.println("do bulk load!");
+			    dobulkload=true;
+			    argindex++;
 			}
 			else if (args[argindex].compareTo("-t")==0)
 			{
@@ -726,7 +741,7 @@ public class Client
 				System.exit(0);
 			}
 
-			Thread t=new ClientThread(db,dotransactions,workload,threadid,threadcount,props,opcount/threadcount,targetperthreadperms);
+			Thread t=new ClientThread(db,dotransactions,dobulkload,workload,threadid,threadcount,props,opcount/threadcount,targetperthreadperms);
 
 			threads.add(t);
 			//t.start();

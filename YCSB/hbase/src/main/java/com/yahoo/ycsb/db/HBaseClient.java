@@ -21,18 +21,21 @@ package com.yahoo.ycsb.db;
 import com.yahoo.ycsb.DBException;
 import com.yahoo.ycsb.ByteIterator;
 import com.yahoo.ycsb.ByteArrayByteIterator;
-import com.yahoo.ycsb.StringByteIterator;
+import com.yahoo.ycsb.bulk.hbase.HBaseDataGenerator;
 
 import java.io.IOException;
 import java.util.*;
-//import java.util.HashMap;
-//import java.util.Properties;
-//import java.util.Set;
-//import java.util.Vector;
 
 import com.yahoo.ycsb.measurements.Measurements;
+
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
+import org.apache.hadoop.hbase.MasterNotRunningException;
+import org.apache.hadoop.hbase.ZooKeeperConnectionException;
+import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 //import org.apache.hadoop.hbase.client.Scanner;
 import org.apache.hadoop.hbase.client.Get;
@@ -45,6 +48,9 @@ import org.apache.hadoop.hbase.client.ResultScanner;
 //import org.apache.hadoop.hbase.io.RowResult;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
 
 /**
  * HBase client for YCSB framework
@@ -69,6 +75,12 @@ public class HBaseClient extends com.yahoo.ycsb.DB
 
     public static final Object tableLock = new Object();
 
+    private static final String WORK_DIR = "work_dir/";
+    private static final String OUTPUT_PATH = "output";
+    private static final String TABLE_NAME = "usertable";
+    private static final String FS_NAME = "fs.default.name";
+    private static final String ZOOKEEPER = "hbase.zookeeper.quorum";
+    
     /**
      * Initialize any state for this DB.
      * Called once per DB instance; there is one DB instance per client thread.
@@ -90,7 +102,87 @@ public class HBaseClient extends com.yahoo.ycsb.DB
       _columnFamilyBytes = Bytes.toBytes(_columnFamily);
 
     }
+    
+    @Override
+    public int bulkload(String table, String[] params) {
+        
+        Configuration conf = new Configuration();
+        
+        Tool tool = new HBaseDataGenerator(conf);
+        try {
 
+	    System.out.println("hbase bulk load!");
+            ToolRunner.run( tool, params );
+            
+            String output_path = params.length <= 3? OUTPUT_PATH:params[4];
+            
+            LoadIncrementalHFiles lh = new LoadIncrementalHFiles(conf);
+            
+            Path path = new Path(WORK_DIR + output_path);
+            HTable hTable = new HTable(conf, TABLE_NAME);
+            
+            lh.doBulkLoad(path, hTable);
+            
+            System.out.println("Bulk Load Successful!");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        
+        return 0;
+    }
+    
+    @Override
+    public int presplit(String table, String[] splitKeys) {
+        HBaseAdmin admin = null;
+        System.out.println("Connecting for hbaseadmin now");
+
+        byte[][] keys = new byte[splitKeys.length][];
+	int thread_key_cnt = 0;
+        for (int i = 0;i < splitKeys.length; i ++)
+        {
+	    if (splitKeys[i] == null)
+		break;
+            keys[i] = splitKeys[i].getBytes();
+	    thread_key_cnt++;
+        }
+
+        try {
+
+            admin= new HBaseAdmin(config);
+            if (getProperties().getProperty("createtable") != null) {
+                HColumnDescriptor cdesc = new HColumnDescriptor(_columnFamily);
+                HTableDescriptor tableDesc = new HTableDescriptor(table);
+                tableDesc.addFamily(cdesc);
+                System.out.println("Creating the table now.... ");
+                admin.createTable(tableDesc, keys);
+            } else {
+                for (int i = 0;i < thread_key_cnt; i ++) {
+                    System.out.println("Add split with row key " + splitKeys[i].toString());
+                    admin.split(table.getBytes(), keys[i]);
+                }
+            }   
+        } catch (MasterNotRunningException e1) {
+            System.err.println("MasterNotRunningException");
+            // TODO Auto-generated catch block
+            e1.printStackTrace();
+        } catch (ZooKeeperConnectionException e1) {
+            // TODO Auto-generated catch block
+            System.err.println("ZooKeeperConnectionException");
+            e1.printStackTrace();
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            System.err.println("IOException");
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            System.err.println("InterruptedException");
+            e.printStackTrace();
+        }
+        
+        return 0;
+    }
+
+    
     /**
      * Cleanup any state for this DB.
      * Called once per DB instance; there is one DB instance per client thread.
