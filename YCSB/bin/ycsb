@@ -21,14 +21,10 @@ COMMANDS = {
         "description" : "Execute the transaction phase",
         "main"        : "com.yahoo.ycsb.Client",
     },
-    "bulkload" : {
-        "command"     : "-bulk",
-        "description" : "Execute the bulkloading phase",
-        "main"        : "com.yahoo.ycsb.Client",
-    },
 }
 
 DATABASES = {
+    "accumulo"     : "com.yahoo.ycsb.db.AccumuloClient",
     "basic"        : "com.yahoo.ycsb.BasicDB",
     "cassandra-7"  : "com.yahoo.ycsb.db.CassandraClient7",
     "cassandra-8"  : "com.yahoo.ycsb.db.CassandraClient8",

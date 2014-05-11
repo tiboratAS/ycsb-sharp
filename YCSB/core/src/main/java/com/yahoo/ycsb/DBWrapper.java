@@ -18,7 +18,6 @@
 package com.yahoo.ycsb;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.Vector;
@@ -169,26 +168,4 @@ public class DBWrapper extends DB
 		_measurements.reportReturnCode("DELETE",res);
 		return res;
 	}
-	
-	@Override
-	public int presplit(String table, String[] splitKeys) {
-	    System.out.println("Call presplit from db wrapper");
-        long st=System.currentTimeMillis();
-        int res = _db.presplit(table, splitKeys);
-        long en=System.currentTimeMillis();
-        _measurements.measure("SPLIT",(int)(en-st));
-        _measurements.reportReturnCode("SPLIT",res);
-        return res;
-    }
-	
-	@Override
-	public int bulkload(String table, String[] params) {
-        System.out.println("Call bulkload from db wrapper");
-        long st=System.currentTimeMillis();
-        int res = _db.bulkload(table, params);
-        long en=System.currentTimeMillis();
-        _measurements.measure("BULKLOAD",(int)(en-st));
-        _measurements.reportReturnCode("BULKLOAD",res);
-        return res;
-    }
 }

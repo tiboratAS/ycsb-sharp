@@ -1,0 +1,850 @@
+diff -rupN YCSB/bin/ycsb YCSB-patch1/bin/ycsb
+--- YCSB/bin/ycsb	2014-05-07 21:29:42.000000000 -0400
++++ YCSB-patch1/bin/ycsb	2014-05-08 16:25:43.000000000 -0400
+@@ -7,49 +7,52 @@ import subprocess
+ BASE_URL = "https://github.com/brianfrankcooper/YCSB/tree/master/"
+ COMMANDS = {
+     "shell" : {
+-        "command"     : "",
+-        "description" : "Interactive mode",
+-        "main"        : "com.yahoo.ycsb.CommandLine",
++        "command"       : "",
++        "description"   : "Interactive mode",
++        "main"          : "com.yahoo.ycsb.CommandLine",
+     },
+     "load" : {
+-        "command"     : "-load",
+-        "description" : "Execute the load phase",
+-        "main"        : "com.yahoo.ycsb.Client",
++        "command"       : "-load",
++        "description"   : "Execute the load phase",
++        "main"          : "com.yahoo.ycsb.Client",
+     },
+     "run" : {
+-        "command"     : "-t",
+-        "description" : "Execute the transaction phase",
+-        "main"        : "com.yahoo.ycsb.Client",
++        "command"       : "-t",
++        "description"   : "Execute the transaction phase",
++        "main"          : "com.yahoo.ycsb.Client",
+     },
+ }
+ 
+ DATABASES = {
+-    "accumulo"     : "com.yahoo.ycsb.db.AccumuloClient",
+-    "basic"        : "com.yahoo.ycsb.BasicDB",
+-    "cassandra-7"  : "com.yahoo.ycsb.db.CassandraClient7",
+-    "cassandra-8"  : "com.yahoo.ycsb.db.CassandraClient8",
+-    "cassandra-10" : "com.yahoo.ycsb.db.CassandraClient10",
+-    "dynamodb"     : "com.yahoo.ycsb.db.DynamoDBClient",
+-    "elasticsearch": "com.yahoo.ycsb.db.ElasticSearchClient",
+-    "gemfire"      : "com.yahoo.ycsb.db.GemFireClient",
+-    "hbase"        : "com.yahoo.ycsb.db.HBaseClient",
+-    "hypertable"   : "com.yahoo.ycsb.db.HypertableClient",
+-    "infinispan"   : "com.yahoo.ycsb.db.InfinispanClient",
+-    "jdbc"         : "com.yahoo.ycsb.db.JdbcDBClient",
+-    "mapkeeper"    : "com.yahoo.ycsb.db.MapKeeperClient",
+-    "mongodb"      : "com.yahoo.ycsb.db.MongoDbClient",
+-    "nosqldb"      : "com.yahoo.ycsb.db.NoSqlDbClient",
+-    "orientdb"     : "com.yahoo.ycsb.db.OrientDBClient",
+-    "redis"        : "com.yahoo.ycsb.db.RedisClient", 
+-    "voldemort"    : "com.yahoo.ycsb.db.VoldemortClient", 
++    "accumulo"          : "com.yahoo.ycsb.db.AccumuloClient",
++    "basic"             : "com.yahoo.ycsb.BasicDB",
++    "cassandra-7"       : "com.yahoo.ycsb.db.CassandraClient7",
++    "cassandra-8"       : "com.yahoo.ycsb.db.CassandraClient8",
++    "cassandra-10"      : "com.yahoo.ycsb.db.CassandraClient10",
++    "dynamodb"          : "com.yahoo.ycsb.db.DynamoDBClient",
++    "elasticsearch"     : "com.yahoo.ycsb.db.ElasticSearchClient",
++    "gemfire"           : "com.yahoo.ycsb.db.GemFireClient",
++    "hbase"             : "com.yahoo.ycsb.db.HBaseClient",
++    "hypertable"        : "com.yahoo.ycsb.db.HypertableClient",
++    "infinispan"        : "com.yahoo.ycsb.db.InfinispanClient",
++    "jdbc"              : "com.yahoo.ycsb.db.JdbcDBClient",
++    "mapkeeper"         : "com.yahoo.ycsb.db.MapKeeperClient",
++    "mongodb"           : "com.yahoo.ycsb.db.MongoDbClient",
++    "nosqldb"           : "com.yahoo.ycsb.db.NoSqlDbClient",
++    "orientdb"          : "com.yahoo.ycsb.db.OrientDBClient",
++    "redis"             : "com.yahoo.ycsb.db.RedisClient", 
++    "voldemort"         : "com.yahoo.ycsb.db.VoldemortClient", 
+ }
+ 
+ OPTIONS = {
+-    "-P file"      : "Specify workload file",
+-    "-p key=value" : "Override workload property",
+-    "-s"           : "Print status to stderr",
+-    "-target n"    : "Target ops/sec (default: unthrottled)",
+-    "-threads n"   : "Number of client threads (default: 1)",
++    "-clients n"        : "Number of synchronized clients (default: 1)",
++	"-zkserver address" : "Address of ZooKeeper server (default: localhost:2181)",
++	"-barrierroot root" : "Specify the root of Barrier (default: /Barrier)",
++    "-P file"           : "Specify workload file",
++    "-p key=value"      : "Override workload property",
++    "-s"                : "Print status to stderr",
++    "-target n"         : "Target ops/sec (default: unthrottled)",
++    "-threads n"        : "Number of client threads (default: 1)",
+ }
+ 
+ def usage():
+diff -rupN YCSB/core/pom.xml YCSB-patch1/core/pom.xml
+--- YCSB/core/pom.xml	2014-05-07 21:29:42.000000000 -0400
++++ YCSB-patch1/core/pom.xml	2014-05-08 16:18:00.000000000 -0400
+@@ -12,11 +12,17 @@
+   <packaging>jar</packaging>
+ 
+   <properties>
++     <zookeeper.version>3.4.6</zookeeper.version>
+      <jackson.api.version>1.9.4</jackson.api.version>
+   </properties>
+ 
+   <dependencies>	
+     <dependency>
++      <groupId>org.apache.zookeeper</groupId>
++      <artifactId>zookeeper</artifactId>
++      <version>3.4.6</version>
++    </dependency>
++    <dependency>
+       <groupId>org.codehaus.jackson</groupId>
+       <artifactId>jackson-mapper-asl</artifactId>
+       <version>${jackson.api.version}</version>
+diff -rupN YCSB/core/src/main/java/com/yahoo/ycsb/Client.java YCSB-patch1/core/src/main/java/com/yahoo/ycsb/Client.java
+--- YCSB/core/src/main/java/com/yahoo/ycsb/Client.java	2014-05-07 21:29:42.000000000 -0400
++++ YCSB-patch1/core/src/main/java/com/yahoo/ycsb/Client.java	2014-05-08 16:20:07.000000000 -0400
+@@ -21,6 +21,7 @@ package com.yahoo.ycsb;
+ import com.yahoo.ycsb.measurements.Measurements;
+ import com.yahoo.ycsb.measurements.exporter.MeasurementsExporter;
+ import com.yahoo.ycsb.measurements.exporter.TextMeasurementsExporter;
++import com.yahoo.ycsb.zkcoordination.Barrier;
+ 
+ import java.io.FileInputStream;
+ import java.io.FileOutputStream;
+@@ -33,6 +34,8 @@ import java.util.Enumeration;
+ import java.util.Properties;
+ import java.util.Vector;
+ 
++import org.apache.zookeeper.KeeperException;
++
+ //import org.apache.log4j.BasicConfigurator;
+ 
+ /**
+@@ -146,6 +149,7 @@ class StatusThread extends Thread
+ class ClientThread extends Thread
+ {
+ 	DB _db;
++	boolean _doconsume;
+ 	boolean _dotransactions;
+ 	Workload _workload;
+ 	int _opcount;
+@@ -170,10 +174,11 @@ class ClientThread extends Thread
+ 	 * @param opcount the number of operations (transactions or inserts) to do
+ 	 * @param targetperthreadperms target number of operations per thread per ms
+ 	 */
+-	public ClientThread(DB db, boolean dotransactions, Workload workload, int threadid, int threadcount, Properties props, int opcount, double targetperthreadperms)
++	public ClientThread(DB db, boolean doconsume, boolean dotransactions, Workload workload, int threadid, int threadcount, Properties props, int opcount, double targetperthreadperms)
+ 	{
+ 		//TODO: consider removing threadcount and threadid
+ 		_db=db;
++		_doconsume=doconsume;
+ 		_dotransactions=dotransactions;
+ 		_workload=workload;
+ 		_opcount=opcount;
+@@ -231,7 +236,11 @@ class ClientThread extends Thread
+ 		
+ 		try
+ 		{
+-			if (_dotransactions)
++			if (_doconsume)
++			{
++				_workload.doConsume(_db,_workloadstate);
++			}
++			else if (_dotransactions)
+ 			{
+ 				long st=System.currentTimeMillis();
+ 
+@@ -351,6 +360,9 @@ public class Client
+ 	{
+ 		System.out.println("Usage: java com.yahoo.ycsb.Client [options]");
+ 		System.out.println("Options:");
++		System.out.println("  -clients n:  specify the number of synchronized clients (default: 1)");
++		System.out.println("  -zkserver address:  specify the address of ZooKeeper server (default: localhost:2181)");
++		System.out.println("  -barrierroot root:  specify the root of Barrier (default: /Barrier)");
+ 		System.out.println("  -threads n: execute using n threads (default: 1) - can also be specified as the \n" +
+ 				"              \"threadcount\" property using -p");
+ 		System.out.println("  -target n: attempt to do n operations per second (default: unlimited) - can also\n" +
+@@ -442,11 +454,16 @@ public class Client
+ 		String dbname;
+ 		Properties props=new Properties();
+ 		Properties fileprops=new Properties();
++		boolean doconsume=false;
+ 		boolean dotransactions=true;
++		int clientcount=1;
+ 		int threadcount=1;
+ 		int target=0;
+ 		boolean status=false;
+ 		String label="";
++		String zkserver;
++		String barrierroot;
++		Barrier barrier=null;
+ 
+ 		//parse arguments
+ 		int argindex=0;
+@@ -459,7 +476,40 @@ public class Client
+ 
+ 		while (args[argindex].startsWith("-"))
+ 		{
+-			if (args[argindex].compareTo("-threads")==0)
++			if (args[argindex].compareTo("clients")==0)
++			{
++				argindex++;
++				if (argindex>=args.length)
++				{
++					usageMessage();
++					System.exit(0);
++				}
++				clientcount=Integer.parseInt(args[argindex]);
++				argindex++;
++			}
++			else if (args[argindex].compareTo("zkserver")==0)
++			{
++				argindex++;
++				if (argindex>=args.length)
++				{
++					usageMessage();
++					System.exit(0);
++				}
++				props.setProperty("zkserver", args[argindex]);
++				argindex++;
++			}
++			else if (args[argindex].compareTo("barrierroot")==0)
++			{
++				argindex++;
++				if (argindex>=args.length)
++				{
++					usageMessage();
++					System.exit(0);
++				}
++				props.setProperty("barrierroot", args[argindex]);
++				argindex++;
++			}
++			else if (args[argindex].compareTo("-threads")==0)
+ 			{
+ 				argindex++;
+ 				if (argindex>=args.length)
+@@ -613,7 +663,9 @@ public class Client
+ 		
+ 		long maxExecutionTime = Integer.parseInt(props.getProperty(MAX_EXECUTION_TIME, "0"));
+ 
+-		//get number of threads, target and db
++		//get zkserver, barrier root, number of threads, target and db
++		zkserver=props.getProperty("zkserver","localhost:2181");
++		barrierroot=props.getProperty("barrierroot","/Barrier");
+ 		threadcount=Integer.parseInt(props.getProperty("threadcount","1"));
+ 		dbname=props.getProperty("db","com.yahoo.ycsb.BasicDB");
+ 		target=Integer.parseInt(props.getProperty("target","0"));
+@@ -632,6 +684,10 @@ public class Client
+ 		{
+ 			System.out.print(" "+args[i]);
+ 		}
++
++		//initialize Barrier if run in multi-client mode
++		barrier = (clientcount>1) ? new Barrier(zkserver,barrierroot,clientcount) : null;
++
+ 		System.out.println();
+ 		System.err.println("Loading workload...");
+ 		
+@@ -691,6 +747,27 @@ public class Client
+ 		warningthread.interrupt();
+ 
+ 		//run the workload
++		if (barrier!=null) {
++			try
++			{
++				System.err.println("Waiting for other clients.");
++				barrier.enter();
++			}
++			catch (KeeperException e)
++			{
++				e.printStackTrace();
++				e.printStackTrace(System.out);
++				barrier.cleanup();
++				System.exit(0);
++			}
++			catch (InterruptedException e)
++			{
++				e.printStackTrace();
++				e.printStackTrace(System.out);
++				barrier.cleanup();
++				System.exit(0);
++			}
++		}
+ 
+ 		System.err.println("Starting test.");
+ 
+@@ -726,7 +803,7 @@ public class Client
+ 				System.exit(0);
+ 			}
+ 
+-			Thread t=new ClientThread(db,dotransactions,workload,threadid,threadcount,props,opcount/threadcount,targetperthreadperms);
++			Thread t=new ClientThread(db,doconsume,dotransactions,workload,threadid,threadcount,props,opcount/threadcount,targetperthreadperms);
+ 
+ 			threads.add(t);
+ 			//t.start();
+@@ -804,6 +881,34 @@ public class Client
+ 			e.printStackTrace();
+ 			System.exit(-1);
+ 		}
++		if (barrier!=null) {
++			try
++			{
++				System.err.println("Waiting for other nodes to leave...");
++				System.err.println();
++				barrier.leave();
++			}
++			catch (KeeperException e)
++			{
++				e.printStackTrace();
++				e.printStackTrace(System.out);
++				if (barrier!=null)
++				{
++					barrier.cleanup();
++				}
++				System.exit(0);
++			}
++			catch (InterruptedException e)
++			{
++				e.printStackTrace();
++				e.printStackTrace(System.out);
++				if (barrier!=null)
++				{
++					barrier.cleanup();
++				}
++				System.exit(0);
++			}
++		}
+ 
+ 		System.exit(0);
+ 	}
+diff -rupN YCSB/core/src/main/java/com/yahoo/ycsb/Workload.java YCSB-patch1/core/src/main/java/com/yahoo/ycsb/Workload.java
+--- YCSB/core/src/main/java/com/yahoo/ycsb/Workload.java	2014-05-07 21:29:42.000000000 -0400
++++ YCSB-patch1/core/src/main/java/com/yahoo/ycsb/Workload.java	2014-05-08 16:01:25.000000000 -0400
+@@ -94,6 +94,14 @@ public abstract class Workload
+        */
+       public abstract boolean doTransaction(DB db, Object threadstate);
+       
++
++      /**
++       * Do one consume operation.
++       */
++      public boolean doConsume(DB db, Object threadstate) {
++          return true;
++      }
++
+       /**
+        * Allows scheduling a request to stop the workload.
+        */
+diff -rupN YCSB/core/src/main/java/com/yahoo/ycsb/measurements/exporter/TextMeasurementsExporter.java YCSB-patch1/core/src/main/java/com/yahoo/ycsb/measurements/exporter/TextMeasurementsExporter.java
+--- YCSB/core/src/main/java/com/yahoo/ycsb/measurements/exporter/TextMeasurementsExporter.java	2014-05-07 21:29:42.000000000 -0400
++++ YCSB-patch1/core/src/main/java/com/yahoo/ycsb/measurements/exporter/TextMeasurementsExporter.java	2014-05-08 15:59:45.000000000 -0400
+@@ -38,12 +38,14 @@ public class TextMeasurementsExporter im
+   {
+     bw.write("[" + metric + "], " + measurement + ", " + i);
+     bw.newLine();
++	bw.flush();
+   }
+ 
+   public void write(String metric, String measurement, double d) throws IOException
+   {
+     bw.write("[" + metric + "], " + measurement + ", " + d);
+     bw.newLine();
++	bw.flush();
+   }
+ 
+   public void close() throws IOException
+diff -rupN YCSB/core/src/main/java/com/yahoo/ycsb/workloads/WeakConsistencyWorkload.java YCSB-patch1/core/src/main/java/com/yahoo/ycsb/workloads/WeakConsistencyWorkload.java
+--- YCSB/core/src/main/java/com/yahoo/ycsb/workloads/WeakConsistencyWorkload.java	1969-12-31 19:00:00.000000000 -0500
++++ YCSB-patch1/core/src/main/java/com/yahoo/ycsb/workloads/WeakConsistencyWorkload.java	2014-05-08 16:16:28.000000000 -0400
+@@ -0,0 +1,176 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.yahoo.ycsb.workloads;
++
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Hashtable;
++import java.util.Set;
++import java.util.Properties;
++import java.util.Random;
++
++import com.yahoo.ycsb.DB;
++import com.yahoo.ycsb.ByteIterator;
++import com.yahoo.ycsb.WorkloadException;
++import com.yahoo.ycsb.measurements.Measurements;
++
++import org.apache.zookeeper.KeeperException;
++
++import com.yahoo.ycsb.zkcoordination.Barrier;
++import com.yahoo.ycsb.zkcoordination.Queue;
++
++public class WeakConsistencyWorkload extends CoreWorkload
++{
++    public static final String ZOOKEEPER_SERVER_PROPERTY="zkserver";
++    public static final String ZOOKEEPER_SERVER_PROPERTY_DEFAULT="localhost:2181";
++
++    public static final String SAMPLING_FRACTION_PROPERTY="samplingfraction";
++    public static final String SAMPLING_FRACTION_PROPERTY_DEFAULT="0.01";
++
++    public static final String MIN_ATTEMPTS_PROPERTY="minattempts";
++    public static final String MIN_ATTEMPTS_PROPERTY_DEFAULT="1";
++
++    public static final String NUM_CONSUMERS_PROPERTY="numconsumers";
++    public static final String NUM_CONSUMERS_PROPERTY_DEFAULT="1";
++
++    private double samplingFraction;
++    private int minAttempts;
++    private int numConsumers;
++	private String barrierroot;
++	private String queueroot;
++    private Barrier barrier;
++    private Queue queue;
++    private Random rand;
++
++    private Hashtable<String,Long> dbkeyFirstRead;
++    private Hashtable<String,Integer> dbkeyNumReads;
++
++    public void init(Properties p) throws WorkloadException
++    {
++        super.init(p);
++
++        String zkserver = p.getProperty(ZOOKEEPER_SERVER_PROPERTY,ZOOKEEPER_SERVER_PROPERTY_DEFAULT);
++        samplingFraction = Double.parseDouble(p.getProperty(SAMPLING_FRACTION_PROPERTY,SAMPLING_FRACTION_PROPERTY_DEFAULT));
++        minAttempts = Integer.parseInt(p.getProperty(MIN_ATTEMPTS_PROPERTY,MIN_ATTEMPTS_PROPERTY_DEFAULT));
++        numConsumers = Integer.parseInt(p.getProperty(NUM_CONSUMERS_PROPERTY,NUM_CONSUMERS_PROPERTY_DEFAULT));
++		barrierroot = p.getProperty("barrierroot","/Barrier");
++	    queueroot = p.getProperty("queueroot","/Queue");
++        barrier = new Barrier(zkserver, barrierroot, 0);
++        queue = new Queue(zkserver, queueroot);
++        rand = new Random();
++        dbkeyFirstRead = new Hashtable<String,Long>();
++        dbkeyNumReads = new Hashtable<String,Integer>();
++    }
++
++    @Override
++    public boolean doInsert(DB db, Object threadstate) 
++    {
++        return doProduce(db);
++    }
++
++    @Override
++    public boolean doConsume(DB db, Object threadstate)
++    {
++        try {
++            while (barrier.numChildren() > numConsumers) {
++                Set<String> keySet = dbkeyFirstRead.keySet();
++                for (String dbkey : keySet) {
++                    long firstRead = dbkeyFirstRead.get(dbkey);
++                    int numReads = dbkeyNumReads.get(dbkey);
++
++                    try
++                    {
++                        dbkeyFirstRead.remove(dbkey);
++                        dbkeyNumReads.remove(dbkey);
++                    }
++                    catch (NullPointerException e)
++                    {
++                        break;
++                    }
++
++                    HashSet<String> fields = new HashSet<String>();
++                    for (int i=0; i<fieldcount; i++)
++                        fields.add("field"+i);
++                    HashMap<String,ByteIterator> result = new HashMap<String,ByteIterator>();
++
++                    db.read(table, dbkey, fields, result);
++                    if (result.size() == 0)
++                    {
++                        dbkeyFirstRead.put(dbkey, firstRead);
++                        dbkeyNumReads.put(dbkey, ++numReads);
++                    }
++                    else
++                    {
++                        if (numReads > minAttempts)
++                        {
++                            int latency = (int)(System.currentTimeMillis() - firstRead);
++                            Measurements.getMeasurements().measure("WEAKCONSISTENCY",latency);
++                        }
++                    }
++                }
++                String dbkey = queue.consume();
++                if (dbkey != null && !dbkeyFirstRead.containsKey(dbkey)) {
++                    dbkeyFirstRead.put(dbkey, System.currentTimeMillis());
++                    dbkeyNumReads.put(dbkey, 1);
++                }
++            }
++
++            queue.cleanup();
++        } catch (KeeperException e) {
++            return false;
++        } catch (InterruptedException e) {
++            return false;
++        }
++
++        return true;
++    }
++
++    @Override
++    public void doTransactionInsert(DB db)
++    {
++        doProduce(db);
++    }
++
++    public boolean doProduce(DB db)
++    {
++        int keynum=keysequence.nextInt();
++        String dbkey = buildKeyName(keynum);
++        HashMap<String, ByteIterator> values = buildValues();
++        if (db.insert(table,dbkey,values) == 0)
++        {
++            if (rand.nextFloat() < samplingFraction) {
++                try
++                {
++                    queue.produce(dbkey);
++                }
++                catch (KeeperException e)
++                {
++                    return false;
++                }
++                catch (InterruptedException e)
++                {
++                    return false;
++                }
++            }
++            return true;
++        }
++        else
++            return false;
++    }
++}
+diff -rupN YCSB/core/src/main/java/com/yahoo/ycsb/zkcoordination/Barrier.java YCSB-patch1/core/src/main/java/com/yahoo/ycsb/zkcoordination/Barrier.java
+--- YCSB/core/src/main/java/com/yahoo/ycsb/zkcoordination/Barrier.java	1969-12-31 19:00:00.000000000 -0500
++++ YCSB-patch1/core/src/main/java/com/yahoo/ycsb/zkcoordination/Barrier.java	2014-05-08 15:56:07.000000000 -0400
+@@ -0,0 +1,108 @@
++package com.yahoo.ycsb.zkcoordination;
++
++import java.util.List;
++
++import org.apache.zookeeper.CreateMode;
++import org.apache.zookeeper.KeeperException;
++import org.apache.zookeeper.ZooDefs.Ids;
++import org.apache.zookeeper.data.Stat;
++
++/**
++ * Barrier
++ */
++public class Barrier extends ZKCoordination
++{
++    int size;
++    String path;
++
++    final String nodeName = "node";
++
++    /**
++     * Barrier constructor
++     *
++     * @param address
++     * @param root
++     * @param size
++     */
++    public Barrier(String address, String root, int size)
++	{
++        super(address);
++        this.size = size;
++        this.root = root;
++
++        // Create barrier node
++        if (zk != null)
++        {
++            try
++            {
++                Stat s = zk.exists(root, false);
++                if (s == null)
++                {
++                    zk.create(root,new byte[0],Ids.OPEN_ACL_UNSAFE,CreateMode.PERSISTENT);
++                }
++            }
++            catch (KeeperException e)
++            {
++                System.err.println("Keeper exception when instantiating barrier: "+e.toString());
++            }
++            catch (InterruptedException e)
++            {
++                System.err.println("Interrupted exception");
++            }
++        }
++    }
++
++    /**
++     * Join barrier
++     *
++     * @return
++     * @throws KeeperException
++     * @throws InterruptedException
++     */
++    public boolean enter() throws KeeperException, InterruptedException
++    {
++        path = zk.create(root+"/"+nodeName,new byte[0],Ids.OPEN_ACL_UNSAFE,CreateMode.EPHEMERAL_SEQUENTIAL);
++        while (true)
++        {
++            synchronized (mutex)
++            {
++                List<String> list = zk.getChildren(root, true);
++                if (list.size() < size)
++                {
++                    mutex.wait();
++                }
++                else
++                {
++                    return true;
++                }
++            }
++        }
++    }
++
++    /**
++     * Wait until all reach barrier
++     *
++     * @return
++     * @throws KeeperException
++     * @throws InterruptedException
++     */
++    public boolean leave() throws KeeperException, InterruptedException
++    {
++        zk.delete(path, 0);
++        while (true)
++        {
++            synchronized (mutex)
++            {
++                List<String> list = zk.getChildren(root, true);
++                if (list.size() > 0)
++                {
++                    mutex.wait();
++                }
++                else
++                {
++                    return true;
++                }
++            }
++        }
++    }
++}
+diff -rupN YCSB/core/src/main/java/com/yahoo/ycsb/zkcoordination/Queue.java YCSB-patch1/core/src/main/java/com/yahoo/ycsb/zkcoordination/Queue.java
+--- YCSB/core/src/main/java/com/yahoo/ycsb/zkcoordination/Queue.java	1969-12-31 19:00:00.000000000 -0500
++++ YCSB-patch1/core/src/main/java/com/yahoo/ycsb/zkcoordination/Queue.java	2014-05-08 15:56:55.000000000 -0400
+@@ -0,0 +1,97 @@
++package com.yahoo.ycsb.zkcoordination;
++
++import java.util.List;
++
++import org.apache.zookeeper.CreateMode;
++import org.apache.zookeeper.KeeperException;
++import org.apache.zookeeper.ZooDefs.Ids;
++import org.apache.zookeeper.data.Stat;
++
++/**
++ * Producer-Consumer queue
++ */
++public class Queue extends ZKCoordination {
++
++    /**
++     * Constructor of producer-consumer queue
++     *
++     * @param address
++     * @param root
++     */
++    public Queue(String address, String root) {
++        super(address);
++        this.root = root;
++
++        // Create ZK node name
++        if (zk != null) {
++            try {
++                Stat s = zk.exists(root, false);
++                if (s == null) {
++                    zk.create(root, new byte[0], Ids.OPEN_ACL_UNSAFE,
++                              CreateMode.PERSISTENT);
++                }
++            } catch (KeeperException e) {
++                System.err.println("Keeper exception when instantiating queue: "
++                                   + e.toString());
++            } catch (InterruptedException e) {
++                System.err.println("Interrupted exception");
++            }
++        }
++    }
++
++    /**
++     * Add element to the queue.
++     *
++     * @param key
++     * @return
++     */
++    public boolean produce(String key) throws KeeperException, InterruptedException
++    {
++        zk.create(root + "/key", key.getBytes(), Ids.OPEN_ACL_UNSAFE,
++                  CreateMode.PERSISTENT_SEQUENTIAL);
++
++        return true;
++    }
++
++    /**
++     * Remove first element from the queue.
++     *
++     * @return
++     * @throws KeeperException
++     * @throws InterruptedException
++     */
++    public String consume() throws KeeperException, InterruptedException
++    {
++        String retvalue = null;
++        Stat stat = null;
++
++        // Get the first element available
++        while (true)
++        {
++            synchronized (mutex)
++            {
++                List<String> list = zk.getChildren(root, true);
++                if (list.size() == 0)
++                {
++                    return null;
++                }
++                else
++                if (list.size() > 0)
++                {
++                    Integer min = new Integer(list.get(0).substring(3));
++                    for (String s : list)
++                    {
++                        Integer tmp = new Integer(s.substring(3));
++                        if (tmp < min) min = tmp;
++                    }
++                    String nodeName = "key" + String.format("%010d", min);
++                    byte[] b = zk.getData(root+'/'+nodeName, false, stat);
++                    zk.delete(root+'/'+nodeName, 0);
++                    retvalue = new String(b);
++
++                    return retvalue;
++                }
++            }
++        }
++    }
++}
+diff -rupN YCSB/core/src/main/java/com/yahoo/ycsb/zkcoordination/ZKCoordination.java YCSB-patch1/core/src/main/java/com/yahoo/ycsb/zkcoordination/ZKCoordination.java
+--- YCSB/core/src/main/java/com/yahoo/ycsb/zkcoordination/ZKCoordination.java	1969-12-31 19:00:00.000000000 -0500
++++ YCSB-patch1/core/src/main/java/com/yahoo/ycsb/zkcoordination/ZKCoordination.java	2014-05-08 15:56:07.000000000 -0400
+@@ -0,0 +1,80 @@
++package com.yahoo.ycsb.zkcoordination;
++
++import java.io.IOException;
++import java.util.List;
++
++import org.apache.zookeeper.WatchedEvent;
++import org.apache.zookeeper.Watcher;
++import org.apache.zookeeper.ZooKeeper;
++import org.apache.zookeeper.KeeperException;
++
++public class ZKCoordination implements Watcher
++{
++
++    ZooKeeper zk = null;
++    Integer mutex;
++
++    String root;
++
++    ZKCoordination(String address)
++    {
++        if(zk == null)
++        {
++            try
++            {
++                System.err.println("Starting ZooKeeper");
++                zk = new ZooKeeper(address, 300, this);
++                mutex = new Integer(-1);
++                System.err.println("Finished starting ZooKeeper: " + zk);
++            }
++            catch (IOException e)
++			{
++                System.out.println(e.toString());
++                zk = null;
++            }
++        }
++    }
++
++    synchronized public void process(WatchedEvent event)
++    {
++        synchronized (mutex)
++        {
++            mutex.notify();
++        }
++    }
++
++    /**
++     * Get number of children exists
++     *
++     * @return
++     * @throws KeeperException
++     * @throws InterruptedException
++     */
++    public int numChildren() throws KeeperException, InterruptedException {
++        return zk.getChildren(root, true).size();
++    }
++
++    /**
++     * Clean up
++     */
++    public void cleanup()
++    {
++        synchronized (mutex)
++        {
++            try {
++            	List<String> list = zk.getChildren(root, true);
++                for (String nodeName : list)
++                {
++                    zk.delete(root+'/'+nodeName, 0);
++                }
++                zk.delete(root, 0);
++            }
++            catch (KeeperException e)
++            {
++            }
++            catch (InterruptedException e)
++            {
++            }
++        }
++    }
++}
+diff -rupN YCSB/pom.xml YCSB-patch1/pom.xml
+--- YCSB/pom.xml	2014-05-07 21:29:42.000000000 -0400
++++ YCSB-patch1/pom.xml	2014-05-08 16:20:44.000000000 -0400
+@@ -57,6 +57,7 @@
+     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+     <thrift.version>0.8.0</thrift.version>
+     <hypertable.version>0.9.5.6</hypertable.version>
++    <zookeeper.version>3.4.6</zookeeper.version>
+   </properties>
+ 
+   <modules>

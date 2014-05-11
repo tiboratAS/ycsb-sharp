@@ -26,11 +26,6 @@
       <artifactId>core</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <dependency>
-      <groupId>com.yahoo.ycsb</groupId>
-      <artifactId>bulkloader</artifactId>
-      <version>${project.version}</version>
-    </dependency>
   </dependencies>
 
   <build>
