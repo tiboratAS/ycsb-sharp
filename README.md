@@ -1,6 +1,5 @@
-YCSB-Sharp
+YCSB#
 ==========
 
-YCSB#
-YCSB From:      https://github.com/brianfrankcooper/YCSB
+YCSB From:      https://github.com/brianfrankcooper/YCSB #
 ZooKeeper From: https://github.com/apache/zookeeper
