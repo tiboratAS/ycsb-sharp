@@ -30,7 +30,6 @@ def ssh(hostname, threadID, count):
         print "connected"
 	#channel = c.get_transport().open_session()
 	#s.load_system_host_keys()
-	#localcmd = cmd + option + ' -clients ' + str(count) + phase
 	
 	localcmd = 'cat ' + workload
 	stdin,stdout,stderr = c.exec_command(localcmd)
@@ -44,7 +43,8 @@ def ssh(hostname, threadID, count):
 		if line.startswith('exportfile='):
 			summaryfile = line.split('=')[1]
 
-	localcmd = cmd + option + phase + workload
+	localcmd = cmd + option + ' -clients ' + str(count) + phase
+        #localcmd = cmd + option + phase + workload
 	print localcmd
 	stdin,stdout,stderr = c.exec_command(localcmd)
 	channel = stdout.channel
