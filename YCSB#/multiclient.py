@@ -3,8 +3,10 @@ import paramiko
 import threading
 import os
 import time
+import sys
+import getopt
 
-# username on multi client, only works for Amazon EC2
+# username on multi client
 username='ec2-user'
 
 # dir that summary will be put
@@ -31,10 +33,11 @@ def ssh(hostname, threadID, count):
 	#channel = c.get_transport().open_session()
 	#s.load_system_host_keys()
 	
-	localcmd = 'cat ' + workload
+	localcmd = 'cat '+workload
 	stdin,stdout,stderr = c.exec_command(localcmd)
 	channel = stdout.channel
 	while not channel.exit_status_ready():
+		print 'waiting for parsing workload...'
 		time.sleep(3)
 
 	filecontent = stdout.readlines();
@@ -43,16 +46,13 @@ def ssh(hostname, threadID, count):
 		if line.startswith('exportfile='):
 			summaryfile = line.split('=')[1]
 
-	localcmd = cmd + option + ' -clients ' + str(count) + phase
-        #localcmd = cmd + option + phase + workload
+	localcmd = cmd + option + phase + workload
+	#localcmd = cmd + option + ' -clients ' + str(count) + phase
 	print localcmd
 	stdin,stdout,stderr = c.exec_command(localcmd)
 	channel = stdout.channel
 	while not channel.exit_status_ready():
 		print "waiting for command complete..."
-		#if channel.recv_ready():
-		#	data = channel.recv(1024)
-		#	print data
 		time.sleep(3)
 
 	print "Thread: ", threadID, " done!"
@@ -85,7 +85,15 @@ if __name__=='__main__':
 		os.makedirs(dirname)
 	
 	threads = []
-	fp = open("multiclient.conf","r")
+	conf = 'multiclient.conf'
+
+	opts, args = getopt.getopt(sys.argv[1:], "c:", ["config"])
+	for opt, arg in opts:
+        	print opt, '+', arg
+		if opt in ("-c", "--config"):
+			conf = arg  	
+
+	fp = open(conf,"r")
 	i = 0
 	count = 0
 	client_list = fp.readlines()
