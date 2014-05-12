@@ -1,0 +1,414 @@
+Binary files ../GitHub/YCSB-Sharp/YCSB/core/src/main/java/com/yahoo/.DS_Store and YCSB/core/src/main/java/com/yahoo/.DS_Store differ
+diff -Nur ../GitHub/YCSB-Sharp/YCSB/core/src/main/java/com/yahoo/ycsb/Client.java YCSB/core/src/main/java/com/yahoo/ycsb/Client.java
+--- ../GitHub/YCSB-Sharp/YCSB/core/src/main/java/com/yahoo/ycsb/Client.java	2014-05-11 14:22:25.000000000 -0400
++++ YCSB/core/src/main/java/com/yahoo/ycsb/Client.java	2014-05-12 01:04:54.000000000 -0400
+@@ -229,6 +229,9 @@
+ 		  // do nothing.
+ 		}
+ 		
++		// call Coreworkload set function to set filter / security 
++		_workload.setDBParameters(_db, _workloadstate);
++
+ 		try
+ 		{
+ 			if (_dotransactions)
+@@ -343,9 +346,9 @@
+ 	public static final String INSERT_COUNT_PROPERTY="insertcount";
+ 	
+ 	/**
+-   * The maximum amount of time (in seconds) for which the benchmark will be run.
+-   */
+-  public static final String MAX_EXECUTION_TIME = "maxexecutiontime";
++   	 * The maximum amount of time (in seconds) for which the benchmark will be run.
++   	 */
++  	public static final String MAX_EXECUTION_TIME = "maxexecutiontime";
+ 
+ 	public static void usageMessage()
+ 	{
+@@ -807,4 +810,4 @@
+ 
+ 		System.exit(0);
+ 	}
+-}
++}
+\ No newline at end of file
+diff -Nur ../GitHub/YCSB-Sharp/YCSB/core/src/main/java/com/yahoo/ycsb/DB.java YCSB/core/src/main/java/com/yahoo/ycsb/DB.java
+--- ../GitHub/YCSB-Sharp/YCSB/core/src/main/java/com/yahoo/ycsb/DB.java	2014-05-11 14:22:25.000000000 -0400
++++ YCSB/core/src/main/java/com/yahoo/ycsb/DB.java	2014-05-12 01:24:16.000000000 -0400
+@@ -92,6 +92,53 @@
+ 	 */
+ 	public abstract int read(String table, String key, Set<String> fields, HashMap<String,ByteIterator> result);
+ 
++	
++	public enum Filter {
++		NONE,
++		/**
++		 * Only return fields matching the filter pattern
++		 */
++		FIELD, 
++		/**
++		 * Only return fields whose value matches the pattern
++		 */
++		VALUE, 
++		/**
++		 * Only return rows whose key match the pattern
++		 */
++		KEY, 
++		/**
++		 * Only return rows which have a match for the specified field and its
++		 * value matches the pattern. Field has to be explicitly specified; the
++		 * value should be a regular expression, the two separated with a newline.
++		 */
++		FIELD_VALUE;
++	}
++
++	/**
++	 * Sets a filter for a table. This filter will be applied to all future reads or scans.
++	 * Interpretation of the filter is specific to the individual database backend.
++	 * A default no-op implementation is provided here so that implementation of this functionality
++	 * is optional.
++	 * @param table The name of the table for the filter
++	 * @param filterType The name of the filter to apply. Interpretation specific to backends.
++	 * @param filterOptions Options for the filter. Interpretation specific to backends.
++	 * @return Zero on success, a non-zerror error code on error, such as an error in the filter strings.
++	 */
++	public int setFilter(String table, Filter filterType, String filterOptions)
++	{
++		return 0;
++	}
++	
++	/**
++	 * Clears the filter set on a table.
++	 * @param table The name of the table to clear the filter on.
++	 */
++	public void clearFilters(String table)
++	{
++		
++	}
++
+ 	/**
+ 	 * Perform a range scan for a set of records in the database. Each field/value pair from the result will be stored in a HashMap.
+ 	 *
+diff -Nur ../GitHub/YCSB-Sharp/YCSB/core/src/main/java/com/yahoo/ycsb/Workload.java YCSB/core/src/main/java/com/yahoo/ycsb/Workload.java
+--- ../GitHub/YCSB-Sharp/YCSB/core/src/main/java/com/yahoo/ycsb/Workload.java	2014-05-11 14:22:25.000000000 -0400
++++ YCSB/core/src/main/java/com/yahoo/ycsb/Workload.java	2014-05-12 01:26:45.000000000 -0400
+@@ -109,4 +109,11 @@
+         if (stopRequested.get() == true) return true;
+         else return false;
+       }
++
++      /**
++       * used to pass workload parameter to DB client
++       */
++      public void setDBParameters(DB db, Object threadstate) {
++      
++      }
+ }
+diff -Nur ../GitHub/YCSB-Sharp/YCSB/core/src/main/java/com/yahoo/ycsb/workloads/CoreWorkload.java YCSB/core/src/main/java/com/yahoo/ycsb/workloads/CoreWorkload.java
+--- ../GitHub/YCSB-Sharp/YCSB/core/src/main/java/com/yahoo/ycsb/workloads/CoreWorkload.java	2014-05-11 14:22:25.000000000 -0400
++++ YCSB/core/src/main/java/com/yahoo/ycsb/workloads/CoreWorkload.java	2014-05-10 15:04:19.000000000 -0400
+@@ -257,6 +257,21 @@
+    * Default value of the percentage operations accessing the hot set.
+    */
+   public static final String HOTSPOT_OPN_FRACTION_DEFAULT = "0.8";
++
++  /**
++   * The name of the property for Whether all the columns are in 
++   * their own families or not.
++   */
++  public static final String UNIQUE_FAMILIES_PROPERTY="uniquefamilies";
++  
++  public static final String UNIQUE_FAMILIES_PROPERTY_DEFAULT="false";
++  
++  public static final String FILTER_TYPE_PROPERTY="filtertype";
++  public static final String FILTER_TYPE_PROPERTY_DEFAULT="none";
++  
++  public static final String FILTER_OPTIONS_PROPERTY="filteroptions";
++  public static final String FILTER_OPTIONS_PROPERTY_DEFAULT="";
++
+ 	
+ 	IntegerGenerator keysequence;
+ 
+@@ -273,6 +288,10 @@
+ 	boolean orderedinserts;
+ 
+ 	int recordcount;
++
++	DB.Filter filtertype;
++
++	String filteroptions;
+ 	
+ 	protected static IntegerGenerator getFieldLengthGenerator(Properties p) throws WorkloadException{
+ 		IntegerGenerator fieldlengthgenerator;
+@@ -323,6 +342,9 @@
+ 		readallfields=Boolean.parseBoolean(p.getProperty(READ_ALL_FIELDS_PROPERTY,READ_ALL_FIELDS_PROPERTY_DEFAULT));
+ 		writeallfields=Boolean.parseBoolean(p.getProperty(WRITE_ALL_FIELDS_PROPERTY,WRITE_ALL_FIELDS_PROPERTY_DEFAULT));
+ 		
++		String filtertypestring=p.getProperty(FILTER_TYPE_PROPERTY,FILTER_TYPE_PROPERTY_DEFAULT);
++		filteroptions=p.getProperty(FILTER_OPTIONS_PROPERTY, FILTER_OPTIONS_PROPERTY_DEFAULT);
++
+ 		if (p.getProperty(INSERT_ORDER_PROPERTY,INSERT_ORDER_PROPERTY_DEFAULT).compareTo("hashed")==0)
+ 		{
+ 			orderedinserts=false;
+@@ -392,13 +414,13 @@
+ 		}
+ 		else if (requestdistrib.equals("hotspot")) 
+ 		{
+-      double hotsetfraction = Double.parseDouble(p.getProperty(
+-          HOTSPOT_DATA_FRACTION, HOTSPOT_DATA_FRACTION_DEFAULT));
+-      double hotopnfraction = Double.parseDouble(p.getProperty(
+-          HOTSPOT_OPN_FRACTION, HOTSPOT_OPN_FRACTION_DEFAULT));
+-      keychooser = new HotspotIntegerGenerator(0, recordcount - 1, 
+-          hotsetfraction, hotopnfraction);
+-    }
++			double hotsetfraction = Double.parseDouble(p.getProperty(
++			  HOTSPOT_DATA_FRACTION, HOTSPOT_DATA_FRACTION_DEFAULT));
++			double hotopnfraction = Double.parseDouble(p.getProperty(
++			  HOTSPOT_OPN_FRACTION, HOTSPOT_OPN_FRACTION_DEFAULT));
++			keychooser = new HotspotIntegerGenerator(0, recordcount - 1, 
++			  hotsetfraction, hotopnfraction);
++	    }
+ 		else
+ 		{
+ 			throw new WorkloadException("Unknown request distribution \""+requestdistrib+"\"");
+@@ -418,6 +440,25 @@
+ 		{
+ 			throw new WorkloadException("Distribution \""+scanlengthdistrib+"\" not allowed for scan length");
+ 		}
++
++		if (filtertypestring.compareTo("field")==0) {
++			filtertype = DB.Filter.FIELD;
++		} else if (filtertypestring.compareTo("value")==0) {
++			filtertype = DB.Filter.VALUE;
++		} else if (filtertypestring.compareTo("key")==0) {
++			filtertype = DB.Filter.KEY;
++		} else if (filtertypestring.compareTo("fieldvalue")==0) {
++			filtertype = DB.Filter.FIELD_VALUE;
++		} else {
++			filtertype = DB.Filter.NONE;
++		}
++	}
++
++	// if not NONE, then call DBclient to set filter
++	public void setDBParameters(DB db, Object threadstate) {
++		if (filtertype != DB.Filter.NONE) {
++		  db.setFilter(table, filtertype, filteroptions);
++		}
+ 	}
+ 
+ 	public String buildKeyName(long keynum) {
+diff -Nur ../GitHub/YCSB-Sharp/YCSB/hbase/src/main/java/com/yahoo/ycsb/db/HBaseClient.java YCSB/hbase/src/main/java/com/yahoo/ycsb/db/HBaseClient.java
+--- ../GitHub/YCSB-Sharp/YCSB/hbase/src/main/java/com/yahoo/ycsb/db/HBaseClient.java	2014-05-11 14:22:25.000000000 -0400
++++ YCSB/hbase/src/main/java/com/yahoo/ycsb/db/HBaseClient.java	2014-05-10 15:17:26.000000000 -0400
+@@ -32,7 +32,11 @@
+ 
+ import com.yahoo.ycsb.measurements.Measurements;
+ import org.apache.hadoop.conf.Configuration;
++import org.apache.hadoop.hbase.HColumnDescriptor;
++import org.apache.hadoop.hbase.HTableDescriptor;
+ import org.apache.hadoop.hbase.KeyValue;
++import org.apache.hadoop.hbase.MasterNotRunningException;
++import org.apache.hadoop.hbase.ZooKeeperConnectionException;
+ import org.apache.hadoop.hbase.client.HTable;
+ //import org.apache.hadoop.hbase.client.Scanner;
+ import org.apache.hadoop.hbase.client.Get;
+@@ -45,6 +49,8 @@
+ //import org.apache.hadoop.hbase.io.RowResult;
+ import org.apache.hadoop.hbase.util.Bytes;
+ import org.apache.hadoop.hbase.HBaseConfiguration;
++import org.apache.hadoop.hbase.filter.*;
++import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
+ 
+ /**
+  * HBase client for YCSB framework
+@@ -61,14 +67,22 @@
+     public HTable _hTable=null;
+     public String _columnFamily="";
+     public byte _columnFamilyBytes[];
++    public boolean _uniqueColumnFamilies=false;
+ 
+     public static final int Ok=0;
+     public static final int ServerError=-1;
+     public static final int HttpError=-2;
+     public static final int NoMatchingRecord=-3;
++    public static final int BadFilterError = -4;
+ 
+     public static final Object tableLock = new Object();
+ 
++    public FilterBase _scanFilter=null;
++
++    public int bufferSize = 12 * 1024;// unit : Kilobytes
++
++
++
+     /**
+      * Initialize any state for this DB.
+      * Called once per DB instance; there is one DB instance per client thread.
+@@ -89,6 +103,17 @@
+         }
+       _columnFamilyBytes = Bytes.toBytes(_columnFamily);
+ 
++      if ( (getProperties().getProperty("uniquefamilies")!=null) &&
++             (getProperties().getProperty("uniquefamilies").compareTo("true")==0))
++        {
++                _uniqueColumnFamilies=true;
++        }
++        
++        if (getProperties().getProperty("bufferSize") != null )
++        {
++            bufferSize = Integer.parseInt(getProperties().getProperty("bufferSize"));
++        }
++
+     }
+ 
+     /**
+@@ -118,12 +143,112 @@
+             _hTable = new HTable(config, table);
+             //2 suggestions from http://ryantwopointoh.blogspot.com/2009/01/performance-of-hbase-importing.html
+             _hTable.setAutoFlush(false);
+-            _hTable.setWriteBufferSize(1024*1024*12);
++            _hTable.setWriteBufferSize(1024*bufferSize);
++            System.out.println("Buffer size " + bufferSize * 1024);
+             //return hTable;
+         }
+ 
+     }
+ 
++
++    /**
++     * Sets a filter for a table. This filter will be applied to all future reads or scans.
++     * Interpretation of the filter is specific to the individual database backend.
++     * A default no-op implementation is provided here so that implementation of this functionality
++     * is optional.
++     * @param table The name of the table for the filter
++     * @param filterType The name of the filter to apply. Interpretation specific to backends.
++     * @param filterOptions Options for the filter. Interpretation specific to backends.
++     * @return Zero on success, a non-zerror error code on error, such as an error in the filter strings.
++     */
++    public int setFilter(String table, Filter filterType, String filterOptions)
++    {
++        RegexStringComparator regexComparator;
++        //if this is a "new" table, init HTable object.  Else, use existing one
++        if (!_table.equals(table)) {
++            _hTable = null;
++            try 
++            {
++                getHTable(table);
++                _table = table;
++            }
++            catch (IOException e) 
++            {
++                System.err.println("Error accessing HBase table: "+e);
++                return ServerError;
++            }
++        }
++
++
++        switch (filterType) {
++        case FIELD:
++            regexComparator = new RegexStringComparator(filterOptions);
++            if (regexComparator == null) {
++                System.err.println("Bad regex for field filter: " + filterOptions);
++                return BadFilterError;
++            }
++            _scanFilter = new QualifierFilter(CompareOp.EQUAL, regexComparator);
++            break;
++        case VALUE:
++            regexComparator = new RegexStringComparator(filterOptions);
++            if (regexComparator == null) {
++                System.err.println("Bad regex for value filter: " + filterOptions);
++                return BadFilterError;
++            }
++            _scanFilter = new ValueFilter(CompareOp.EQUAL, regexComparator);
++            break;
++        case KEY:
++            regexComparator = new RegexStringComparator(filterOptions);
++            if (regexComparator == null) {
++                System.err.println("Bad regex for key filter: " + filterOptions);
++                return BadFilterError;
++            }
++            _scanFilter = new RowFilter(CompareOp.EQUAL, regexComparator);
++            break;
++        case FIELD_VALUE:
++            /* We use the first ':' character as the split between the column name */
++            /* and column name. */
++            String[] fieldAndFilter = filterOptions.split(":", 2);
++            if (fieldAndFilter.length < 2) {
++                System.err.println("Bad format for field-Value filter options: " + filterOptions);
++                return BadFilterError;
++            }
++            regexComparator = new RegexStringComparator(fieldAndFilter[1]);
++            if (regexComparator == null) {
++                System.err.println("Bad regex for field-Value filter: " + fieldAndFilter[1]);
++                return BadFilterError;
++            }
++            _scanFilter = new SingleColumnValueFilter(_columnFamilyBytes, Bytes.toBytes(fieldAndFilter[0]), CompareOp.EQUAL, regexComparator);
++            break;
++        }
++
++        return 0;
++    }
++
++    /**
++     * Clears the filter set on a table.
++     * @param table The name of the table to clear the filter on.
++     */
++    public void clearFilters(String table)
++    {
++        //if this is a "new" table, init HTable object.  Else, use existing one
++        if (!_table.equals(table)) {
++            _hTable = null;
++            try 
++            {
++                getHTable(table);
++                _table = table;
++            }
++            catch (IOException e) 
++            {
++                System.err.println("Error accessing HBase table: "+e);
++                return ;//ServerError;
++            }
++        }
++        _scanFilter = null;
++    }
++
++
+     /**
+      * Read a record from the database. Each field/value pair from the result will be stored in a HashMap.
+      *
+@@ -223,6 +348,11 @@
+         //We get back recordcount records
+         s.setCaching(recordcount);
+ 
++        // set server-side filter for HBase
++        if (_scanFilter != null) {
++            s.setFilter(_scanFilter);
++        }
++
+         //add specified fields or else all fields
+         if (fields == null)
+         {
+@@ -232,7 +362,10 @@
+         {
+             for (String field : fields)
+             {
+-                s.addColumn(_columnFamilyBytes,Bytes.toBytes(field));
++                if (!_uniqueColumnFamilies)
++                    s.addColumn(_columnFamilyBytes,Bytes.toBytes(field));
++                else
++                    s.addColumn(Bytes.toBytes(field), Bytes.toBytes(field));
+             }
+         }
+ 
+@@ -248,6 +381,11 @@
+                 if (_debug)
+                 {
+                     System.out.println("Got scan result for key: "+key);
++                    System.out.format("Scan result: Key='%s', Column='%s:%s', Value='%s'\n", 
++                          Bytes.toString(kv.getRow()), 
++                          Bytes.toString(kv.getFamily()), 
++                          Bytes.toString(kv.getQualifier()), 
++                          Bytes.toString(kv.getValue()));
+                 }
+ 
+                 HashMap<String,ByteIterator> rowResult = new HashMap<String, ByteIterator>();
